@@ -6,7 +6,7 @@ auto-programming source for [nvim-cmp](https://github.com/hrsh7th/nvim-cmp), ins
 
 ```lua
   use { 'theoremoon/cmp-auto-programming',
-    reqires = {
+    requires = {
       "nvim-lua/plenary.nvim",
       "neovim/nvim-lspconfig",
     }
