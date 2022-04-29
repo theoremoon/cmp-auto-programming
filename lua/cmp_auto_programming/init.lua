@@ -22,6 +22,9 @@ local split = function(s, sep)
 end
 
 local trim = function(s)
+    if s == nil then
+        return  nil
+    end
     return string.gsub(s, "^%s*(.-)%s*$", "%1")
 end
 
