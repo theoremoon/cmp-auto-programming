@@ -1,6 +1,5 @@
 local cmp = require('cmp')
 local lspconfig = require('lspconfig')
-local job = require('plenary.job')
 
 local map = function(f, tbl)
     if tbl == nil then
@@ -39,31 +38,73 @@ source.get_debug_name = function()
     return 'auto-programming'
 end
 
-source.complete = function(self, request, callback)
-    local line = trim(request.context.cursor_before_line)
-
-    -- なんかrg --jsonで置き換えたいんだけどプロセスの終わりをうまく受け付けられないらしくて断念してる
-    local items = {}
-    job:new({
-        command = 'git',
-        args = { 'grep', '-F', '-e', line },
-        cwd = vim.fn.getcwd(),
-        on_stdout = function(error, data, j)
-            local parts = split(data, "\t")
-            local s1 = trim(parts[2])
-            table.insert(items, {
-                label = s1,
-                documentation = parts[1],
-            })
-        end,
-        on_exit = function(j, status)
-            callback({
-                items = items,
-                isIncomplete = false,
-            })
-        end,
-    }):sync()
+-- 全部マッチしても困るので3文字以上入力されてたら検索する
+source.get_keyword_pattern = function()
+    return [[....*]]
 end
+
+source.complete = function(self, request, callback)
+    local query = trim(request.context.cursor_before_line)
+    if query == "" then
+        return
+    end
+
+    
+    local j = nil
+    local items = {}
+    if vim.fn.executable('rg') == 1 then
+        j = vim.fn.jobstart({
+            'rg', '--json', '-F', query,
+        }, {
+            stdin = 'null',
+            cwd = vim.fn.getcwd(),
+            on_stdout = function(j, data, ev)
+                for i, line in ipairs(data) do
+                    xpcall(function()
+                        local t = vim.json.decode(line)
+                        if t["type"] == "match" then
+                            table.insert(items, {
+                                label = trim(t["data"]["lines"]["text"]),
+                                documentation = t["data"]["path"]["text"],
+                            })
+                        end
+                    end, function(err)
+                    end)
+                end
+            end,
+            on_exit = function(j, status, event)
+                callback({
+                    items = items,
+                    isIncomplete = false,
+                })
+            end,
+        })
+    else
+        j = vim.fn.jobstart({
+            'git', 'grep', '-F', query,
+        }, {
+            stdin = 'null',
+            cwd = vim.fn.getcwd(),
+            on_stdout = function(j, data, ev)
+                for i, line in ipairs(data) do
+                    local parts = split(line, ":")
+                    table.insert(items, {
+                        label = trim(parts[2]),
+                        documentation = parts[1],
+                    })
+                end
+            end,
+            on_exit = function(j, status, event)
+                callback({
+                    items = items,
+                    isIncomplete = false,
+                })
+            end,
+        })
+    end
+    vim.fn.jobwait({j},1)
+end
+
 
 source.deindent = function(_, text)
   local indent = string.match(text, '^%s*')
